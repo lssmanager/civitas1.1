@@ -48,9 +48,9 @@ function buildAdministrativeContactsCustomData(contacts = []) {
     .filter((contact) => Object.keys(contact).length > 0);
 }
 
-function buildOrganizationCustomData({ canonical = {}, settings = {}, business = {}, segmentation = {} } = {}) {
+function buildOrganizationCustomData({ canonical = {}, settings = {}, contact = {}, business = {}, segmentation = {} } = {}) {
   const administrativeContacts = buildAdministrativeContactsCustomData(canonical.administrativeContacts);
-  const primaryContact = administrativeContacts.find((contact) => contact.email || contact.name) || null;
+  const primaryContact = administrativeContacts.find((entry) => entry.email || entry.name) || null;
   const tags = unique(segmentation.tags);
   const lists = unique(segmentation.lists);
   const companyName = trim(canonical.name);
@@ -66,9 +66,9 @@ function buildOrganizationCustomData({ canonical = {}, settings = {}, business =
     oidcRedirectUri: settings.oidcRedirectUri || null,
     civitasProfile: cleanObject({
       contact: cleanObject({
-        email: trim(primaryContact?.email),
-        owner: trim(primaryContact?.name),
-        phone: trim(primaryContact?.phone),
+        email: trim(contact.email) || trim(primaryContact?.email),
+        owner: trim(contact.owner) || trim(primaryContact?.name),
+        phone: trim(contact.phone) || trim(primaryContact?.phone),
       }),
       version: 1,
       business: cleanObject({
@@ -111,12 +111,12 @@ function buildOrganizationCustomData({ canonical = {}, settings = {}, business =
   });
 }
 
-function buildOrganizationCreatePayload({ canonical = {}, settings = {}, business = {}, segmentation = {} } = {}) {
+function buildOrganizationCreatePayload({ canonical = {}, settings = {}, contact = {}, business = {}, segmentation = {} } = {}) {
   return cleanObject({
     name: canonical.name,
     description:
       canonical.description || trim(business.description) || undefined,
-    customData: buildOrganizationCustomData({ canonical, settings, business, segmentation }),
+    customData: buildOrganizationCustomData({ canonical, settings, contact, business, segmentation }),
   });
 }
 
