@@ -7,14 +7,16 @@ const {
   requireOrganizationAccess,
 } = require("./middleware/auth");
 const {
-  addUserToLogtoOrganization,
-  assignOrganizationRoleToUser,
-  createLogtoOrganization,
-  ensureOrganizationTemplate,
-  findOrganizationRoleByName,
   listLogtoOrganizations,
-  ORGANIZATION_ADMIN_ROLE_NAME,
+  listLogtoOrganizationRoles,
+  validateOrganizationTemplate,
 } = require("./services/logtoManagement");
+const {
+  normalizeProvisioningInput,
+  runCanonicalOrganizationProvisioning,
+  ORGANIZATION_ADMIN_ROLE_NAME,
+  JIT_DEFAULT_ORGANIZATION_ROLE_NAME,
+} = require("./services/organizationProvisioningCore");
 
 const { getDatabaseHealth } = require("./lib/databaseHealth");
 const { getRedisHealth } = require("./lib/redisHealth");
@@ -93,7 +95,7 @@ app.get("/health", async (_req, res) => {
   const logto = getLogtoConfigHealth();
   const worker = getWorkerReadiness();
   const status = summarizeStatus(["healthy", logto.status, database.status, redis.status, worker.status]);
-  res.status(status === "unhealthy" ? 503 : 200).json({ status, service: "civitas1.1-backend", api: { status: "healthy" }, logto, database, redis, worker });
+  res.status(status === "unhealthy" ? 503 : 200).json({ status, service: "civitas10-backend", api: { status: "healthy" }, logto, database, redis, worker });
 });
 
 app.get("/me", requireAuth(API_RESOURCE), (req, res) => {
@@ -115,6 +117,32 @@ app.get("/owner/me", requireAuth(API_RESOURCE), requireOwner, (req, res) => {
       scopes: me.auth.scopes,
     },
   });
+});
+
+app.get("/owner/organization-template", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
+  try {
+    const roles = await listLogtoOrganizationRoles();
+    const template = await validateOrganizationTemplate({
+      requiredRoleNames: [ORGANIZATION_ADMIN_ROLE_NAME, JIT_DEFAULT_ORGANIZATION_ROLE_NAME],
+    });
+
+    return res.json({
+      roles: roles.map((role) => ({
+        id: role.id || role.organizationRoleId || role.roleId,
+        name: role.name || role.nameCache || role.key,
+      })).filter((role) => role.id && role.name),
+      requiredRoleNames: template.requiredRoleNames,
+      missingRoleNames: template.missingRoleNames,
+      ready: template.ok,
+    });
+  } catch (error) {
+    return res.status(error?.status || 500).json({
+      error: error?.name || "OwnerOrganizationTemplateError",
+      message: error?.message || "Failed to load Logto organization template",
+      code: error?.code || null,
+      details: error?.body || null,
+    });
+  }
 });
 
 app.get("/owner/organizations", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
@@ -140,35 +168,26 @@ app.get("/owner/organizations", requireAuth(API_RESOURCE), requireOwner, async (
 
 app.post(["/owner/organizations", "/organizations"], requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
   try {
-    const { name, description, customData } = req.body || {};
+    const normalized = normalizeProvisioningInput(req.body || {});
 
-    if (!name || typeof name !== "string") {
-      return res.status(400).json({ error: "Bad Request", message: "name is required" });
-    }
-
-    await ensureOrganizationTemplate();
-    const organization = await createLogtoOrganization({
-      name: name.trim(),
-      description: typeof description === "string" ? description.trim() : undefined,
-      customData: customData && typeof customData === "object" ? customData : undefined,
-    });
-
-    const adminRole = await findOrganizationRoleByName(ORGANIZATION_ADMIN_ROLE_NAME);
-    await addUserToLogtoOrganization({ organizationId: organization.id, userId: req.user.id });
-
-    if (adminRole?.id) {
-      await assignOrganizationRoleToUser({
-        organizationId: organization.id,
-        userId: req.user.id,
-        organizationRoleId: adminRole.id,
+    if (normalized.errors.length > 0) {
+      return res.status(400).json({
+        error: "ValidationError",
+        message: "Organization provisioning input is invalid",
+        details: normalized.errors,
       });
     }
 
+    const result = await runCanonicalOrganizationProvisioning({ input: normalized.value });
+
     return res.status(201).json({
-      data: organization,
+      status: result.status,
+      data: result.organization,
       bootstrap: {
-        firstAdminUserId: req.user.id,
-        assignedOrganizationRole: adminRole?.name || ORGANIZATION_ADMIN_ROLE_NAME,
+        firstAdminUserId: result.administrativeContactAssignments[0]?.logtoUserId || null,
+        assignedOrganizationRole: result.administrativeContactAssignments[0]?.roleName || null,
+        administrativeContactAssignments: result.administrativeContactAssignments,
+        jitProvisioning: result.jitProvisioning,
       },
     });
   } catch (error) {
@@ -184,7 +203,7 @@ app.post(["/owner/organizations", "/organizations"], requireAuth(API_RESOURCE), 
 app.get(
   "/documents",
   requireOrganizationAccess({ requiredScopes: ["read:documents"] }),
-  async (req, res) => {
+  async (_req, res) => {
     const documents = [
       {
         id: "1",
@@ -215,7 +234,7 @@ app.post(
 );
 
 app.get("/", (_req, res) => {
-  res.json({ message: "Welcome to the Civitas 1.1 API" });
+  res.json({ message: "Welcome to the Civitas 10 API" });
 });
 
 app.listen(port, () => {
