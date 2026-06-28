@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   backend:
     build:
@@ -14,12 +16,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_LOGTO_ENDPOINT: ${VITE_LOGTO_ENDPOINT:-http://localhost:3001}
-        VITE_LOGTO_APP_ID: ${VITE_LOGTO_APP_ID:-<YOUR_LOGTO_APP_ID>}
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
-        VITE_API_RESOURCE_INDICATOR: ${VITE_API_RESOURCE_INDICATOR:-https://api.documind.com}
-        VITE_APP_REDIRECT_URI: ${VITE_APP_REDIRECT_URI:-http://localhost:4173/callback}
-        VITE_APP_SIGNOUT_REDIRECT_URI: ${VITE_APP_SIGNOUT_REDIRECT_URI:-http://localhost:4173/}
+        VITE_LOGTO_ENDPOINT: ${VITE_LOGTO_ENDPOINT}
+        VITE_LOGTO_APP_ID: ${VITE_LOGTO_APP_ID}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_API_RESOURCE_INDICATOR: ${VITE_API_RESOURCE_INDICATOR}
+        VITE_APP_REDIRECT_URI: ${VITE_APP_REDIRECT_URI}
+        VITE_APP_SIGNOUT_REDIRECT_URI: ${VITE_APP_SIGNOUT_REDIRECT_URI}
     ports:
       - "4173:4173"
     depends_on:
