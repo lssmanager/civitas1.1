@@ -120,7 +120,7 @@ type CreatedState = {
 const getCountryOption = (countryCode: string) =>
   COUNTRY_OPTIONS.find((country) => country.code === countryCode) ?? null;
 
-const getRegionOption = (countryCode: string, regionCode: string) =>
+const getRegionOption = (countryCode: string, regionCode: string): GeographyRegion | null =>
   getCountryOption(countryCode)?.regions.find((region) => region.code === regionCode) ?? null;
 
 const normalizePhoneValue = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -265,7 +265,7 @@ const OwnerOrganizationsPage = () => {
     () => getCountryOption(form.business.country) ?? getCountryOption(DEFAULT_COUNTRY_CODE),
     [form.business.country],
   );
-  const regionOptions = selectedCountry?.regions ?? [];
+  const regionOptions: readonly GeographyRegion[] = selectedCountry?.regions ?? [];
   const selectedRegion = useMemo(
     () => getRegionOption(form.business.country, form.business.state),
     [form.business.country, form.business.state],
