@@ -5,6 +5,48 @@ import { useOwnerApi, type CreateOwnerOrganizationInput } from "../api/owner";
 
 const APP_BASE_DOMAINS = ["didaxus.com", "socialstudies.cloud", "learnsocialstudies.com"] as const;
 
+const COUNTRY_OPTIONS = [
+  {
+    code: "CO",
+    name: "Colombia",
+    phonePrefix: "+57",
+    regionLabel: "Department",
+    regions: [
+      { code: "ANT", name: "Antioquia", cities: ["Medellin", "Envigado", "Bello"] },
+      { code: "DC", name: "Bogota D.C.", cities: ["Bogota"] },
+      { code: "CUN", name: "Cundinamarca", cities: ["Chia", "Soacha", "Zipaquira"] },
+      { code: "VAC", name: "Valle del Cauca", cities: ["Cali", "Palmira", "Jamundi"] },
+    ],
+  },
+  {
+    code: "MX",
+    name: "Mexico",
+    phonePrefix: "+52",
+    regionLabel: "State",
+    regions: [
+      { code: "CDMX", name: "Ciudad de Mexico", cities: ["Ciudad de Mexico"] },
+      { code: "JAL", name: "Jalisco", cities: ["Guadalajara", "Zapopan", "Tlaquepaque"] },
+      { code: "NLE", name: "Nuevo Leon", cities: ["Monterrey", "San Nicolas", "Guadalupe"] },
+    ],
+  },
+  {
+    code: "US",
+    name: "United States",
+    phonePrefix: "+1",
+    regionLabel: "State",
+    regions: [
+      { code: "CA", name: "California", cities: ["Los Angeles", "San Diego", "San Francisco"] },
+      { code: "FL", name: "Florida", cities: ["Miami", "Orlando", "Tampa"] },
+      { code: "NY", name: "New York", cities: ["New York City", "Buffalo", "Albany"] },
+    ],
+  },
+] as const;
+
+const DEFAULT_COUNTRY_CODE = "CO";
+
+type GeographyCountry = (typeof COUNTRY_OPTIONS)[number];
+type GeographyRegion = GeographyCountry["regions"][number];
+
 type AdministrativeContact = {
   id: string;
   firstName: string;
@@ -75,14 +117,40 @@ type CreatedState = {
   }>;
 };
 
-const emptyContact = (index: number, roleName = "Admin-org"): AdministrativeContact => ({
+const getCountryOption = (countryCode: string) =>
+  COUNTRY_OPTIONS.find((country) => country.code === countryCode) ?? null;
+
+const getRegionOption = (countryCode: string, regionCode: string) =>
+  getCountryOption(countryCode)?.regions.find((region) => region.code === regionCode) ?? null;
+
+const normalizePhoneValue = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const propagatePhonePrefix = (phone: string, previousPrefix: string | null, nextPrefix: string) => {
+  const normalizedPhone = normalizePhoneValue(phone);
+  if (!normalizedPhone) return nextPrefix;
+  if (previousPrefix && normalizedPhone === previousPrefix) return nextPrefix;
+  if (previousPrefix && normalizedPhone.startsWith(`${previousPrefix} `)) {
+    return `${nextPrefix} ${normalizedPhone.slice(previousPrefix.length + 1)}`.trim();
+  }
+  if (previousPrefix && normalizedPhone.startsWith(previousPrefix)) {
+    return `${nextPrefix}${normalizedPhone.slice(previousPrefix.length)}`.trim();
+  }
+  if (normalizedPhone.startsWith("+")) return normalizedPhone;
+  return `${nextPrefix} ${normalizedPhone}`.trim();
+};
+
+const emptyContact = (
+  index: number,
+  roleName = "Admin-org",
+  countryCode = DEFAULT_COUNTRY_CODE,
+): AdministrativeContact => ({
   id: `contact-${index}`,
   firstName: "",
   middleName: "",
   firstSurname: "",
   secondSurname: "",
   email: "",
-  phone: "",
+  phone: getCountryOption(countryCode)?.phonePrefix || "",
   phoneExtension: "",
   position: "",
   organizationRoleName: roleName,
@@ -102,7 +170,7 @@ const initialFormState = (defaultRoleName = "Admin-org"): FormState => ({
     city: "",
     state: "",
     postalCode: "",
-    country: "",
+    country: DEFAULT_COUNTRY_CODE,
     numberOfEmployees: "",
     industry: "",
     type: "",
@@ -114,7 +182,7 @@ const initialFormState = (defaultRoleName = "Admin-org"): FormState => ({
     tags: [],
     lists: [],
   },
-  administrativeContacts: [emptyContact(1, defaultRoleName)],
+  administrativeContacts: [emptyContact(1, defaultRoleName, DEFAULT_COUNTRY_CODE)],
 });
 
 const toSentence = (value: string) => value.trim();
@@ -155,14 +223,25 @@ const OwnerOrganizationsPage = () => {
         if (cancelled) return;
         setTemplate(response);
         setForm((current) => {
-          const adminRole = response.roles.find((role) => role.name === "Admin-org")?.name || response.roles[0]?.name || "Admin-org";
-          const jitRole = response.roles.find((role) => role.name === "member")?.name || response.roles[0]?.name || "member";
+          const adminRole =
+            response.roles.find((role) => role.name === "Admin-org")?.name ||
+            response.roles[0]?.name ||
+            "Admin-org";
+          const jitRole =
+            response.roles.find((role) => role.name === "member")?.name ||
+            response.roles[0]?.name ||
+            "member";
           return {
             ...current,
             jitDefaultRoleName: current.jitDefaultRoleName || jitRole,
             administrativeContacts: current.administrativeContacts.map((contact, index) => ({
               ...contact,
               organizationRoleName: contact.organizationRoleName || adminRole,
+              phone:
+                normalizePhoneValue(contact.phone) ||
+                getCountryOption(current.business.country)?.phonePrefix ||
+                getCountryOption(DEFAULT_COUNTRY_CODE)?.phonePrefix ||
+                "",
               id: `contact-${index + 1}`,
             })),
           };
@@ -182,6 +261,16 @@ const OwnerOrganizationsPage = () => {
   }, [ownerApi]);
 
   const adminRoleOptions = useMemo(() => template?.roles ?? [], [template]);
+  const selectedCountry = useMemo(
+    () => getCountryOption(form.business.country) ?? getCountryOption(DEFAULT_COUNTRY_CODE),
+    [form.business.country],
+  );
+  const regionOptions = selectedCountry?.regions ?? [];
+  const selectedRegion = useMemo(
+    () => getRegionOption(form.business.country, form.business.state),
+    [form.business.country, form.business.state],
+  );
+  const cityOptions = selectedRegion?.cities ?? [];
   const canSubmit = Boolean(template?.ready) && !submitting;
 
   const updateField = <K extends keyof FormState>(field: K, value: FormState[K]) => {
@@ -198,6 +287,53 @@ const OwnerOrganizationsPage = () => {
     }));
   };
 
+  const updateCountryField = (countryCode: string) => {
+    setForm((current) => {
+      const previousCountry = getCountryOption(current.business.country);
+      const nextCountry = getCountryOption(countryCode);
+      const stateIsStillValid =
+        Boolean(nextCountry) &&
+        nextCountry.regions.some((region) => region.code === current.business.state);
+      const nextState = stateIsStillValid ? current.business.state : "";
+      const nextRegion = nextCountry?.regions.find((region) => region.code === nextState) ?? null;
+      const cityIsStillValid =
+        Boolean(nextRegion) && nextRegion.cities.includes(current.business.city);
+      const nextCity = cityIsStillValid ? current.business.city : "";
+
+      return {
+        ...current,
+        business: {
+          ...current.business,
+          country: countryCode,
+          state: nextState,
+          city: nextCity,
+        },
+        administrativeContacts: current.administrativeContacts.map((contact) => ({
+          ...contact,
+          phone: nextCountry
+            ? propagatePhonePrefix(contact.phone, previousCountry?.phonePrefix ?? null, nextCountry.phonePrefix)
+            : contact.phone,
+        })),
+      };
+    });
+  };
+
+  const updateStateField = (stateCode: string) => {
+    setForm((current) => {
+      const nextRegion = getRegionOption(current.business.country, stateCode);
+      const cityIsStillValid =
+        Boolean(nextRegion) && nextRegion.cities.includes(current.business.city);
+      return {
+        ...current,
+        business: {
+          ...current.business,
+          state: stateCode,
+          city: cityIsStillValid ? current.business.city : "",
+        },
+      };
+    });
+  };
+
   const updateContact = (id: string, field: keyof AdministrativeContact, value: string) => {
     setForm((current) => ({
       ...current,
@@ -208,12 +344,15 @@ const OwnerOrganizationsPage = () => {
   };
 
   const addContact = () => {
-    const fallbackRole = adminRoleOptions.find((role) => role.name === "Admin-org")?.name || adminRoleOptions[0]?.name || "Admin-org";
+    const fallbackRole =
+      adminRoleOptions.find((role) => role.name === "Admin-org")?.name ||
+      adminRoleOptions[0]?.name ||
+      "Admin-org";
     setForm((current) => ({
       ...current,
       administrativeContacts: [
         ...current.administrativeContacts,
-        emptyContact(current.administrativeContacts.length + 1, fallbackRole),
+        emptyContact(current.administrativeContacts.length + 1, fallbackRole, current.business.country),
       ],
     }));
   };
@@ -223,7 +362,8 @@ const OwnerOrganizationsPage = () => {
       const next = current.administrativeContacts.filter((contact) => contact.id !== id);
       return {
         ...current,
-        administrativeContacts: next.length > 0 ? next : [emptyContact(1)],
+        administrativeContacts:
+          next.length > 0 ? next : [emptyContact(1, "Admin-org", current.business.country)],
       };
     });
   };
@@ -237,10 +377,18 @@ const OwnerOrganizationsPage = () => {
 
     const seenEmails = new Set<string>();
     form.administrativeContacts.forEach((contact, index) => {
-      if (!toSentence(contact.firstName)) errors.push(`Administrative contact ${index + 1}: first name is required.`);
-      if (!toSentence(contact.firstSurname)) errors.push(`Administrative contact ${index + 1}: first surname is required.`);
-      if (!toSentence(contact.email)) errors.push(`Administrative contact ${index + 1}: email is required.`);
-      if (!toSentence(contact.organizationRoleName)) errors.push(`Administrative contact ${index + 1}: organization role is required.`);
+      if (!toSentence(contact.firstName)) {
+        errors.push(`Administrative contact ${index + 1}: first name is required.`);
+      }
+      if (!toSentence(contact.firstSurname)) {
+        errors.push(`Administrative contact ${index + 1}: first surname is required.`);
+      }
+      if (!toSentence(contact.email)) {
+        errors.push(`Administrative contact ${index + 1}: email is required.`);
+      }
+      if (!toSentence(contact.organizationRoleName)) {
+        errors.push(`Administrative contact ${index + 1}: organization role is required.`);
+      }
       const email = contact.email.trim().toLowerCase();
       if (email) {
         if (seenEmails.has(email)) {
@@ -253,47 +401,65 @@ const OwnerOrganizationsPage = () => {
     return errors;
   };
 
-  const buildPayload = (): CreateOwnerOrganizationInput => ({
-    name: form.name.trim(),
-    description: form.description.trim() || undefined,
-    appSubdomain: form.appSubdomain.trim().toLowerCase(),
-    appBaseDomain: form.appBaseDomain.trim().toLowerCase(),
-    adminDomain: form.adminDomain.trim().toLowerCase(),
-    jitProvisioning: {
-      defaultRoleNames: [form.jitDefaultRoleName],
-    },
-    business: {
-      website: form.business.website.trim() || undefined,
-      addressLine1: form.business.addressLine1.trim() || undefined,
-      addressLine2: form.business.addressLine2.trim() || undefined,
-      city: form.business.city.trim() || undefined,
-      state: form.business.state.trim() || undefined,
-      postalCode: form.business.postalCode.trim() || undefined,
-      country: form.business.country.trim() || undefined,
-      numberOfEmployees: form.business.numberOfEmployees.trim() || undefined,
-      industry: form.business.industry.trim() || undefined,
-      type: form.business.type.trim() || undefined,
-      about: form.business.about.trim() || undefined,
-      nit: form.business.nit.trim() || undefined,
-      verificationDigit: form.business.verificationDigit.trim() || undefined,
-    },
-    segmentation: {
-      tags: form.segmentation.tags,
-      lists: form.segmentation.lists,
-    },
-    administrativeContacts: form.administrativeContacts.map((contact) => ({
-      key: contact.id,
-      firstName: contact.firstName.trim(),
-      middleName: contact.middleName.trim() || undefined,
-      firstSurname: contact.firstSurname.trim(),
-      secondSurname: contact.secondSurname.trim() || undefined,
-      email: contact.email.trim().toLowerCase(),
-      phone: contact.phone.trim() || undefined,
-      phoneExtension: contact.phoneExtension.trim() || undefined,
-      position: contact.position.trim() || undefined,
-      organizationRoleName: contact.organizationRoleName,
-    })),
-  });
+  const buildPayload = (): CreateOwnerOrganizationInput => {
+    const primaryAdministrativeContact = form.administrativeContacts[0];
+    const primaryOwnerName = [
+      primaryAdministrativeContact?.firstName,
+      primaryAdministrativeContact?.middleName,
+      primaryAdministrativeContact?.firstSurname,
+      primaryAdministrativeContact?.secondSurname,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return {
+      name: form.name.trim(),
+      description: form.description.trim() || undefined,
+      appSubdomain: form.appSubdomain.trim().toLowerCase(),
+      appBaseDomain: form.appBaseDomain.trim().toLowerCase(),
+      adminDomain: form.adminDomain.trim().toLowerCase(),
+      jitProvisioning: {
+        defaultRoleNames: [form.jitDefaultRoleName],
+      },
+      contact: {
+        email: primaryAdministrativeContact?.email.trim().toLowerCase() || undefined,
+        phone: primaryAdministrativeContact?.phone.trim() || undefined,
+        owner: primaryOwnerName || undefined,
+      },
+      business: {
+        website: form.business.website.trim() || undefined,
+        addressLine1: form.business.addressLine1.trim() || undefined,
+        addressLine2: form.business.addressLine2.trim() || undefined,
+        city: form.business.city.trim() || undefined,
+        state: selectedRegion?.name || undefined,
+        postalCode: form.business.postalCode.trim() || undefined,
+        country: selectedCountry?.name || undefined,
+        numberOfEmployees: form.business.numberOfEmployees.trim() || undefined,
+        industry: form.business.industry.trim() || undefined,
+        type: form.business.type.trim() || undefined,
+        about: form.business.about.trim() || undefined,
+        nit: form.business.nit.trim() || undefined,
+        verificationDigit: form.business.verificationDigit.trim() || undefined,
+      },
+      segmentation: {
+        tags: form.segmentation.tags,
+        lists: form.segmentation.lists,
+      },
+      administrativeContacts: form.administrativeContacts.map((contact) => ({
+        key: contact.id,
+        firstName: contact.firstName.trim(),
+        middleName: contact.middleName.trim() || undefined,
+        firstSurname: contact.firstSurname.trim(),
+        secondSurname: contact.secondSurname.trim() || undefined,
+        email: contact.email.trim().toLowerCase(),
+        phone: contact.phone.trim() || undefined,
+        phoneExtension: contact.phoneExtension.trim() || undefined,
+        position: contact.position.trim() || undefined,
+        organizationRoleName: contact.organizationRoleName,
+      })),
+    };
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -313,7 +479,8 @@ const OwnerOrganizationsPage = () => {
         organizationDescription: response.data.description || form.description || null,
         firstAdminUserId: response.bootstrap?.firstAdminUserId || null,
         assignedOrganizationRole: response.bootstrap?.assignedOrganizationRole || null,
-        administrativeContactAssignments: response.bootstrap?.administrativeContactAssignments || [],
+        administrativeContactAssignments:
+          response.bootstrap?.administrativeContactAssignments || [],
       });
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error));
@@ -328,11 +495,14 @@ const OwnerOrganizationsPage = () => {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-blue-700">Owner global workspace</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-blue-700">
+              Owner global workspace
+            </p>
             <h1 className="mt-2 text-3xl font-semibold text-slate-900">Create organization</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
               This clean rescue page preserves the full provisioning flow: organization creation in Logto,
-              administrative users, organization roles, JIT defaults, entry URLs, and custom data for the new Civitas foundation.
+              administrative users, organization roles, JIT defaults, entry URLs, and custom data for the new
+              Civitas foundation.
             </p>
           </div>
           <div className="flex gap-3">
@@ -355,16 +525,23 @@ const OwnerOrganizationsPage = () => {
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
             <h2 className="text-lg font-semibold text-emerald-900">Organization created in Logto</h2>
             <p className="mt-2 text-sm text-emerald-800">
-              <strong>{created.organizationName}</strong> was created successfully and the administrative users were provisioned.
+              <strong>{created.organizationName}</strong> was created successfully and the administrative users were
+              provisioned.
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="rounded-xl bg-white/70 p-4">
                 <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Bootstrap</div>
-                <div className="mt-2 text-sm text-slate-700">First admin user id: {created.firstAdminUserId || "—"}</div>
-                <div className="mt-1 text-sm text-slate-700">Assigned organization role: {created.assignedOrganizationRole || "—"}</div>
+                <div className="mt-2 text-sm text-slate-700">
+                  First admin user id: {created.firstAdminUserId || "-"}
+                </div>
+                <div className="mt-1 text-sm text-slate-700">
+                  Assigned organization role: {created.assignedOrganizationRole || "-"}
+                </div>
               </div>
               <div className="rounded-xl bg-white/70 p-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Administrative assignments</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Administrative assignments
+                </div>
                 <ul className="mt-2 space-y-2 text-sm text-slate-700">
                   {created.administrativeContactAssignments.map((assignment) => (
                     <li key={`${assignment.email}-${assignment.logtoUserId}`}>
@@ -382,7 +559,8 @@ const OwnerOrganizationsPage = () => {
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Canonical organization</h2>
               <p className="text-sm text-slate-600">
-                The organization is created canonically in Logto. The fields below define its entry URL and institutional provisioning domain.
+                The organization is created canonically in Logto. The fields below define its entry URL and
+                institutional provisioning domain.
               </p>
             </div>
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -396,31 +574,55 @@ const OwnerOrganizationsPage = () => {
               </div>
               <div>
                 <label className={labelClassName}>Application subdomain</label>
-                <input className={inputClassName} value={form.appSubdomain} onChange={(event) => updateField("appSubdomain", event.target.value)} placeholder="school-demo" />
+                <input
+                  className={inputClassName}
+                  value={form.appSubdomain}
+                  onChange={(event) => updateField("appSubdomain", event.target.value)}
+                  placeholder="school-demo"
+                />
               </div>
               <div>
                 <label className={labelClassName}>Application base domain</label>
                 <select className={inputClassName} value={form.appBaseDomain} onChange={(event) => updateField("appBaseDomain", event.target.value)}>
                   {APP_BASE_DOMAINS.map((domain) => (
-                    <option value={domain} key={domain}>{domain}</option>
+                    <option value={domain} key={domain}>
+                      {domain}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className={labelClassName}>Institutional provisioning domain</label>
-                <input className={inputClassName} value={form.adminDomain} onChange={(event) => updateField("adminDomain", event.target.value)} placeholder="school.edu.co" />
+                <input
+                  className={inputClassName}
+                  value={form.adminDomain}
+                  onChange={(event) => updateField("adminDomain", event.target.value)}
+                  placeholder="school.edu.co"
+                />
               </div>
               <div>
                 <label className={labelClassName}>JIT default role</label>
-                <select className={inputClassName} value={form.jitDefaultRoleName} onChange={(event) => updateField("jitDefaultRoleName", event.target.value)} disabled={templateLoading || adminRoleOptions.length === 0}>
+                <select
+                  className={inputClassName}
+                  value={form.jitDefaultRoleName}
+                  onChange={(event) => updateField("jitDefaultRoleName", event.target.value)}
+                  disabled={templateLoading || adminRoleOptions.length === 0}
+                >
                   {adminRoleOptions.map((role) => (
-                    <option key={role.id} value={role.name}>{role.name}</option>
+                    <option key={role.id} value={role.name}>
+                      {role.name}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Entry URL preview: <strong>{form.appSubdomain && form.appBaseDomain ? `https://${form.appSubdomain}.${form.appBaseDomain}` : "Pending subdomain and domain"}</strong>
+              Entry URL preview:{" "}
+              <strong>
+                {form.appSubdomain && form.appBaseDomain
+                  ? `https://${form.appSubdomain}.${form.appBaseDomain}`
+                  : "Pending subdomain and domain"}
+              </strong>
             </div>
           </section>
 
@@ -428,23 +630,87 @@ const OwnerOrganizationsPage = () => {
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Business profile and custom data</h2>
               <p className="text-sm text-slate-600">
-                These fields populate the organization custom data that Civitas keeps attached to the canonical organization record.
+                These fields populate the organization custom data that Civitas keeps attached to the canonical
+                organization record.
               </p>
             </div>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Country now drives both the phone prefix suggested for administrative contacts and the dependent
+              region and city lists.
+            </div>
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              <div><label className={labelClassName}>Website</label><input className={inputClassName} value={form.business.website} onChange={(event) => updateBusinessField("website", event.target.value)} /></div>
-              <div><label className={labelClassName}>Country</label><input className={inputClassName} value={form.business.country} onChange={(event) => updateBusinessField("country", event.target.value)} /></div>
-              <div><label className={labelClassName}>State / region</label><input className={inputClassName} value={form.business.state} onChange={(event) => updateBusinessField("state", event.target.value)} /></div>
-              <div><label className={labelClassName}>City</label><input className={inputClassName} value={form.business.city} onChange={(event) => updateBusinessField("city", event.target.value)} /></div>
-              <div><label className={labelClassName}>Postal code</label><input className={inputClassName} value={form.business.postalCode} onChange={(event) => updateBusinessField("postalCode", event.target.value)} /></div>
-              <div><label className={labelClassName}>Number of employees</label><input className={inputClassName} value={form.business.numberOfEmployees} onChange={(event) => updateBusinessField("numberOfEmployees", event.target.value)} /></div>
-              <div><label className={labelClassName}>Industry</label><input className={inputClassName} value={form.business.industry} onChange={(event) => updateBusinessField("industry", event.target.value)} /></div>
-              <div><label className={labelClassName}>Organization type</label><input className={inputClassName} value={form.business.type} onChange={(event) => updateBusinessField("type", event.target.value)} /></div>
-              <div><label className={labelClassName}>Tax id / NIT</label><input className={inputClassName} value={form.business.nit} onChange={(event) => updateBusinessField("nit", event.target.value)} /></div>
-              <div><label className={labelClassName}>Verification digit</label><input className={inputClassName} value={form.business.verificationDigit} onChange={(event) => updateBusinessField("verificationDigit", event.target.value)} /></div>
-              <div className="md:col-span-2 xl:col-span-3"><label className={labelClassName}>Address line 1</label><input className={inputClassName} value={form.business.addressLine1} onChange={(event) => updateBusinessField("addressLine1", event.target.value)} /></div>
-              <div className="md:col-span-2 xl:col-span-3"><label className={labelClassName}>Address line 2</label><input className={inputClassName} value={form.business.addressLine2} onChange={(event) => updateBusinessField("addressLine2", event.target.value)} /></div>
-              <div className="md:col-span-2 xl:col-span-3"><label className={labelClassName}>About</label><textarea className={inputClassName} rows={4} value={form.business.about} onChange={(event) => updateBusinessField("about", event.target.value)} /></div>
+              <div>
+                <label className={labelClassName}>Website</label>
+                <input className={inputClassName} value={form.business.website} onChange={(event) => updateBusinessField("website", event.target.value)} />
+              </div>
+              <div>
+                <label className={labelClassName}>Country</label>
+                <select className={inputClassName} value={form.business.country} onChange={(event) => updateCountryField(event.target.value)}>
+                  {COUNTRY_OPTIONS.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClassName}>{selectedCountry?.regionLabel || "State / region"}</label>
+                <select className={inputClassName} value={form.business.state} onChange={(event) => updateStateField(event.target.value)}>
+                  <option value="">Select {selectedCountry?.regionLabel?.toLowerCase() || "region"}</option>
+                  {regionOptions.map((region) => (
+                    <option key={region.code} value={region.code}>
+                      {region.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClassName}>City</label>
+                <select className={inputClassName} value={form.business.city} onChange={(event) => updateBusinessField("city", event.target.value)} disabled={cityOptions.length === 0}>
+                  <option value="">Select city</option>
+                  {cityOptions.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClassName}>Postal code</label>
+                <input className={inputClassName} value={form.business.postalCode} onChange={(event) => updateBusinessField("postalCode", event.target.value)} />
+              </div>
+              <div>
+                <label className={labelClassName}>Number of employees</label>
+                <input className={inputClassName} value={form.business.numberOfEmployees} onChange={(event) => updateBusinessField("numberOfEmployees", event.target.value)} />
+              </div>
+              <div>
+                <label className={labelClassName}>Industry</label>
+                <input className={inputClassName} value={form.business.industry} onChange={(event) => updateBusinessField("industry", event.target.value)} />
+              </div>
+              <div>
+                <label className={labelClassName}>Organization type</label>
+                <input className={inputClassName} value={form.business.type} onChange={(event) => updateBusinessField("type", event.target.value)} />
+              </div>
+              <div>
+                <label className={labelClassName}>Tax id / NIT</label>
+                <input className={inputClassName} value={form.business.nit} onChange={(event) => updateBusinessField("nit", event.target.value)} />
+              </div>
+              <div>
+                <label className={labelClassName}>Verification digit</label>
+                <input className={inputClassName} value={form.business.verificationDigit} onChange={(event) => updateBusinessField("verificationDigit", event.target.value)} />
+              </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <label className={labelClassName}>Address line 1</label>
+                <input className={inputClassName} value={form.business.addressLine1} onChange={(event) => updateBusinessField("addressLine1", event.target.value)} />
+              </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <label className={labelClassName}>Address line 2</label>
+                <input className={inputClassName} value={form.business.addressLine2} onChange={(event) => updateBusinessField("addressLine2", event.target.value)} />
+              </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <label className={labelClassName}>About</label>
+                <textarea className={inputClassName} rows={4} value={form.business.about} onChange={(event) => updateBusinessField("about", event.target.value)} />
+              </div>
             </div>
           </section>
 
@@ -452,7 +718,12 @@ const OwnerOrganizationsPage = () => {
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Administrative users</h2>
               <p className="text-sm text-slate-600">
-                These users are provisioned or resolved in Logto, added to the new organization, and assigned their organization role.
+                These users are provisioned or resolved in Logto, added to the new organization, and assigned their
+                organization role.
+              </p>
+              <p className="text-sm text-slate-500">
+                The first administrative contact seeds the organization contact email and phone, but every value
+                remains editable after the suggestion is applied.
               </p>
             </div>
             <div className="space-y-5">
@@ -461,28 +732,76 @@ const OwnerOrganizationsPage = () => {
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h3 className="text-base font-semibold text-slate-900">Administrative contact {index + 1}</h3>
-                      <p className="text-sm text-slate-500">Users created here keep the custom data flow intact when sent to Logto.</p>
+                      <p className="text-sm text-slate-500">
+                        Users created here keep the custom data flow intact when sent to Logto.
+                      </p>
                     </div>
                     {form.administrativeContacts.length > 1 && (
-                      <button type="button" onClick={() => removeContact(contact.id)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
+                      <button
+                        type="button"
+                        onClick={() => removeContact(contact.id)}
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                      >
                         Remove
                       </button>
                     )}
                   </div>
                   <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                    <div><label className={labelClassName}>First name</label><input className={inputClassName} value={contact.firstName} onChange={(event) => updateContact(contact.id, "firstName", event.target.value)} /></div>
-                    <div><label className={labelClassName}>Middle name</label><input className={inputClassName} value={contact.middleName} onChange={(event) => updateContact(contact.id, "middleName", event.target.value)} /></div>
-                    <div><label className={labelClassName}>First surname</label><input className={inputClassName} value={contact.firstSurname} onChange={(event) => updateContact(contact.id, "firstSurname", event.target.value)} /></div>
-                    <div><label className={labelClassName}>Second surname</label><input className={inputClassName} value={contact.secondSurname} onChange={(event) => updateContact(contact.id, "secondSurname", event.target.value)} /></div>
-                    <div className="xl:col-span-2"><label className={labelClassName}>Email</label><input className={inputClassName} type="email" value={contact.email} onChange={(event) => updateContact(contact.id, "email", event.target.value)} /></div>
-                    <div><label className={labelClassName}>Phone</label><input className={inputClassName} value={contact.phone} onChange={(event) => updateContact(contact.id, "phone", event.target.value)} /></div>
-                    <div><label className={labelClassName}>Extension</label><input className={inputClassName} value={contact.phoneExtension} onChange={(event) => updateContact(contact.id, "phoneExtension", event.target.value)} /></div>
-                    <div><label className={labelClassName}>Position</label><input className={inputClassName} value={contact.position} onChange={(event) => updateContact(contact.id, "position", event.target.value)} /></div>
-                    <div className="xl:col-span-2"><label className={labelClassName}>Organization role</label><select className={inputClassName} value={contact.organizationRoleName} onChange={(event) => updateContact(contact.id, "organizationRoleName", event.target.value)} disabled={templateLoading || adminRoleOptions.length === 0}>{adminRoleOptions.map((role) => <option key={`${contact.id}-${role.id}`} value={role.name}>{role.name}</option>)}</select></div>
+                    <div>
+                      <label className={labelClassName}>First name</label>
+                      <input className={inputClassName} value={contact.firstName} onChange={(event) => updateContact(contact.id, "firstName", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClassName}>Middle name</label>
+                      <input className={inputClassName} value={contact.middleName} onChange={(event) => updateContact(contact.id, "middleName", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClassName}>First surname</label>
+                      <input className={inputClassName} value={contact.firstSurname} onChange={(event) => updateContact(contact.id, "firstSurname", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClassName}>Second surname</label>
+                      <input className={inputClassName} value={contact.secondSurname} onChange={(event) => updateContact(contact.id, "secondSurname", event.target.value)} />
+                    </div>
+                    <div className="xl:col-span-2">
+                      <label className={labelClassName}>Email</label>
+                      <input className={inputClassName} type="email" value={contact.email} onChange={(event) => updateContact(contact.id, "email", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClassName}>Phone</label>
+                      <input className={inputClassName} value={contact.phone} onChange={(event) => updateContact(contact.id, "phone", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClassName}>Extension</label>
+                      <input className={inputClassName} value={contact.phoneExtension} onChange={(event) => updateContact(contact.id, "phoneExtension", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClassName}>Position</label>
+                      <input className={inputClassName} value={contact.position} onChange={(event) => updateContact(contact.id, "position", event.target.value)} />
+                    </div>
+                    <div className="xl:col-span-2">
+                      <label className={labelClassName}>Organization role</label>
+                      <select
+                        className={inputClassName}
+                        value={contact.organizationRoleName}
+                        onChange={(event) => updateContact(contact.id, "organizationRoleName", event.target.value)}
+                        disabled={templateLoading || adminRoleOptions.length === 0}
+                      >
+                        {adminRoleOptions.map((role) => (
+                          <option key={`${contact.id}-${role.id}`} value={role.name}>
+                            {role.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               ))}
-              <button type="button" onClick={addContact} className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-50">
+              <button
+                type="button"
+                onClick={addContact}
+                className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+              >
                 Add another administrative user
               </button>
             </div>
@@ -492,17 +811,44 @@ const OwnerOrganizationsPage = () => {
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Segmentation metadata</h2>
               <p className="text-sm text-slate-600">
-                These values are stored as clean segmentation metadata inside the organization custom data for later connector orchestration.
+                These values are stored as clean segmentation metadata inside the organization custom data for later
+                connector orchestration.
               </p>
             </div>
             <div className="grid gap-5 md:grid-cols-2">
               <div>
                 <label className={labelClassName}>Tags</label>
-                <input className={inputClassName} value={form.segmentation.tags.join(", ")} onChange={(event) => setForm((current) => ({ ...current, segmentation: { ...current.segmentation, tags: parseDelimitedValues(event.target.value) } }))} placeholder="school, k12, premium" />
+                <input
+                  className={inputClassName}
+                  value={form.segmentation.tags.join(", ")}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      segmentation: {
+                        ...current.segmentation,
+                        tags: parseDelimitedValues(event.target.value),
+                      },
+                    }))
+                  }
+                  placeholder="school, k12, premium"
+                />
               </div>
               <div>
                 <label className={labelClassName}>Lists</label>
-                <input className={inputClassName} value={form.segmentation.lists.join(", ")} onChange={(event) => setForm((current) => ({ ...current, segmentation: { ...current.segmentation, lists: parseDelimitedValues(event.target.value) } }))} placeholder="north-region, onboarding" />
+                <input
+                  className={inputClassName}
+                  value={form.segmentation.lists.join(", ")}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      segmentation: {
+                        ...current.segmentation,
+                        lists: parseDelimitedValues(event.target.value),
+                      },
+                    }))
+                  }
+                  placeholder="north-region, onboarding"
+                />
               </div>
             </div>
           </section>
@@ -512,7 +858,9 @@ const OwnerOrganizationsPage = () => {
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Submit provisioning</h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  This action must keep the canonical flow intact: create the organization in Logto, provision the administrative users, assign their organization roles, and save the custom data payload without relying on the old owner shell.
+                  This action must keep the canonical flow intact: create the organization in Logto, provision the
+                  administrative users, assign their organization roles, and save the custom data payload without
+                  relying on the old owner shell.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
