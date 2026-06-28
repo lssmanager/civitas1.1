@@ -5,7 +5,21 @@ import { useOwnerApi, type CreateOwnerOrganizationInput } from "../api/owner";
 
 const APP_BASE_DOMAINS = ["didaxus.com", "socialstudies.cloud", "learnsocialstudies.com"] as const;
 
-const COUNTRY_OPTIONS = [
+type GeographyRegion = {
+  code: string;
+  name: string;
+  cities: readonly string[];
+};
+
+type GeographyCountry = {
+  code: string;
+  name: string;
+  phonePrefix: string;
+  regionLabel: string;
+  regions: readonly GeographyRegion[];
+};
+
+const COUNTRY_OPTIONS: readonly GeographyCountry[] = [
   {
     code: "CO",
     name: "Colombia",
@@ -40,12 +54,9 @@ const COUNTRY_OPTIONS = [
       { code: "NY", name: "New York", cities: ["New York City", "Buffalo", "Albany"] },
     ],
   },
-] as const;
+];
 
 const DEFAULT_COUNTRY_CODE = "CO";
-
-type GeographyCountry = (typeof COUNTRY_OPTIONS)[number];
-type GeographyRegion = GeographyCountry["regions"][number];
 
 type AdministrativeContact = {
   id: string;
@@ -117,7 +128,7 @@ type CreatedState = {
   }>;
 };
 
-const getCountryOption = (countryCode: string) =>
+const getCountryOption = (countryCode: string): GeographyCountry | null =>
   COUNTRY_OPTIONS.find((country) => country.code === countryCode) ?? null;
 
 const getRegionOption = (countryCode: string, regionCode: string): GeographyRegion | null =>
@@ -270,7 +281,7 @@ const OwnerOrganizationsPage = () => {
     () => getRegionOption(form.business.country, form.business.state),
     [form.business.country, form.business.state],
   );
-  const cityOptions = selectedRegion?.cities ?? [];
+  const cityOptions: readonly string[] = selectedRegion?.cities ?? [];
   const canSubmit = Boolean(template?.ready) && !submitting;
 
   const updateField = <K extends keyof FormState>(field: K, value: FormState[K]) => {
@@ -291,13 +302,27 @@ const OwnerOrganizationsPage = () => {
     setForm((current) => {
       const previousCountry = getCountryOption(current.business.country);
       const nextCountry = getCountryOption(countryCode);
-      const stateIsStillValid =
-        Boolean(nextCountry) &&
-        nextCountry.regions.some((region) => region.code === current.business.state);
+
+      if (!nextCountry) {
+        return {
+          ...current,
+          business: {
+            ...current.business,
+            country: countryCode,
+            state: "",
+            city: "",
+          },
+        };
+      }
+
+      const stateIsStillValid = nextCountry.regions.some(
+        (region) => region.code === current.business.state,
+      );
       const nextState = stateIsStillValid ? current.business.state : "";
-      const nextRegion = nextCountry?.regions.find((region) => region.code === nextState) ?? null;
-      const cityIsStillValid =
-        Boolean(nextRegion) && nextRegion.cities.includes(current.business.city);
+      const nextRegion = nextCountry.regions.find((region) => region.code === nextState) ?? null;
+      const cityIsStillValid = nextRegion
+        ? nextRegion.cities.includes(current.business.city)
+        : false;
       const nextCity = cityIsStillValid ? current.business.city : "";
 
       return {
@@ -310,9 +335,11 @@ const OwnerOrganizationsPage = () => {
         },
         administrativeContacts: current.administrativeContacts.map((contact) => ({
           ...contact,
-          phone: nextCountry
-            ? propagatePhonePrefix(contact.phone, previousCountry?.phonePrefix ?? null, nextCountry.phonePrefix)
-            : contact.phone,
+          phone: propagatePhonePrefix(
+            contact.phone,
+            previousCountry?.phonePrefix ?? null,
+            nextCountry.phonePrefix,
+          ),
         })),
       };
     });
@@ -321,8 +348,9 @@ const OwnerOrganizationsPage = () => {
   const updateStateField = (stateCode: string) => {
     setForm((current) => {
       const nextRegion = getRegionOption(current.business.country, stateCode);
-      const cityIsStillValid =
-        Boolean(nextRegion) && nextRegion.cities.includes(current.business.city);
+      const cityIsStillValid = nextRegion
+        ? nextRegion.cities.includes(current.business.city)
+        : false;
       return {
         ...current,
         business: {
