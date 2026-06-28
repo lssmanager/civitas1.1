@@ -141,6 +141,10 @@ function normalizeProvisioningInput(body = {}) {
         },
       },
       settings: settings.value,
+      contact:
+        body.contact && typeof body.contact === "object"
+          ? body.contact
+          : {},
       business: body.business && typeof body.business === "object" ? body.business : {},
       segmentation:
         body.segmentation && typeof body.segmentation === "object"
@@ -238,6 +242,7 @@ function createOrganizationFromCanonicalInput(input) {
     buildOrganizationCreatePayload({
       canonical: input.canonical,
       settings: input.settings,
+      contact: input.contact,
       business: input.business,
       segmentation: input.segmentation,
     }),
