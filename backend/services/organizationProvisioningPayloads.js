@@ -129,33 +129,30 @@ function buildUserCreatePayload(person = {}) {
     .filter(Boolean)
     .join(" ");
   const phoneExtension = trim(person.phoneExtension);
+  const username = trim(person.username) || buildLogtoUsername({ email: person.email });
 
   return cleanObject({
     primaryEmail: trim(person.email)?.toLowerCase(),
     primaryPhone: phoneExtension ? null : trim(person.phone),
-    username: trim(person.username) || buildLogtoUsername({ email: person.email }),
+    username,
     name: trim(person.name) || fullName || null,
     profile: cleanObject({
+      familyName: firstSurname,
       givenName: firstName,
       middleName,
-      familyName: [firstSurname, secondSurname].filter(Boolean).join(" ") || null,
-      preferredUsername: trim(person.username) || buildLogtoUsername({ email: person.email }),
+      preferredUsername: username,
     }),
     customData: cleanObject({
       civitasProfile: cleanObject({
-        source: "owner_organization_provisioning",
-        key: trim(person.key),
-        firstName,
-        middleName,
-        firstSurname,
-        secondSurname,
-        fullName: fullName || null,
-        email: trim(person.email)?.toLowerCase(),
-        organizationRoleName: trim(person.organizationRoleName),
-        position: trim(person.position),
         phone: trim(person.phone),
+        source: "owner_organization_provisioning",
+        position: trim(person.position),
+        key: trim(person.key),
+        organizationRoleName: trim(person.organizationRoleName),
         phoneExtension,
+        fullName: fullName || null,
       }),
+      secondFamilyName: secondSurname,
     }),
   });
 }
