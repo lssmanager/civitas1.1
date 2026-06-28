@@ -69,6 +69,36 @@ The following parts are intentionally not treated as the current baseline becaus
 - `contracts/`: operational schemas
 - `examples/`: canonical operational contract examples
 - `docs/architecture/`: architectural backbone documentation
+- `docker-compose.yml`: minimal two-service startup for backend and frontend
+
+## Quick container start
+
+If your deployment platform expects Docker Compose, this repository now exposes a root `docker-compose.yml`.
+
+1. Copy the root environment file.
+
+```bash
+cp .env.example .env
+```
+
+2. Copy the backend environment file.
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+3. Fill both files with your real Logto values.
+
+4. Start the stack.
+
+```bash
+docker compose up --build
+```
+
+Services exposed by default:
+
+- frontend: `http://localhost:4173`
+- backend: `http://localhost:3000`
 
 ## Local setup
 
@@ -200,6 +230,7 @@ At this stage, validate these first:
 3. `GET /me` payload shape
 4. owner-global organization creation through `POST /owner/organizations`
 5. operational contract tests with `npm test` in `backend`
+6. compose startup with `docker compose up --build`
 
 ## Architecture notes
 
