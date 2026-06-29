@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const { requireAuth, requireOrganizationAccess } = require("./middleware/auth");
+const { createSecurityPolicyRegistry } = require("./middleware/securityPolicies");
 const {
   listLogtoOrganizations,
   listLogtoOrganizationRoles,
@@ -29,7 +30,7 @@ const port = process.env.PORT || 3000;
 const API_RESOURCE = process.env.LOGTO_API_RESOURCE_INDICATOR || "https://api.civitas.example";
 
 app.use(cors());
-app.use(express.json());
+const secureRoute = createSecurityPolicyRegistry({ app });
 
 const requireOwner = (req, res, next) => {
   const globalRoles = Array.isArray(req.user?.globalRoles) ? req.user.globalRoles : [];
@@ -130,7 +131,7 @@ const buildOperationalOrganization = (organization, profile) => ({
   },
 });
 
-app.get("/health", async (_req, res) => {
+secureRoute.get("/health", "health", async (_req, res) => {
   const [database, redis] = await Promise.all([getDatabaseHealth(), getRedisHealth()]);
   const logto = getLogtoConfigHealth();
   const worker = getWorkerReadiness();
@@ -138,11 +139,11 @@ app.get("/health", async (_req, res) => {
   res.status(status === "unhealthy" ? 503 : 200).json({ status, service: "civitas10-backend", api: { status: "healthy" }, logto, database, redis, worker });
 });
 
-app.get("/me", requireAuth(API_RESOURCE), (req, res) => {
+secureRoute.get("/me", "authenticatedRead", requireAuth(API_RESOURCE), (req, res) => {
   res.json(buildMeResponse(req.user));
 });
 
-app.get("/owner/me", requireAuth(API_RESOURCE), requireOwner, (req, res) => {
+secureRoute.get("/owner/me", "ownerRead", requireAuth(API_RESOURCE), requireOwner, (req, res) => {
   const me = buildMeResponse(req.user);
   res.json({
     owner: {
@@ -159,7 +160,7 @@ app.get("/owner/me", requireAuth(API_RESOURCE), requireOwner, (req, res) => {
   });
 });
 
-app.get("/owner/organization-template", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
+secureRoute.get("/owner/organization-template", "ownerRead", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
   try {
     const roles = await listLogtoOrganizationRoles();
     const template = await validateOrganizationTemplate({ requiredRoleNames: [ORGANIZATION_ADMIN_ROLE_NAME, JIT_DEFAULT_ORGANIZATION_ROLE_NAME] });
@@ -174,7 +175,7 @@ app.get("/owner/organization-template", requireAuth(API_RESOURCE), requireOwner,
   }
 });
 
-app.get("/owner/organizations", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
+secureRoute.get("/owner/organizations", "ownerRead", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
   try {
     const organizations = await listLogtoOrganizations();
     return res.json({ organizations: organizations.map(serializeOwnerOrganization) });
@@ -183,7 +184,7 @@ app.get("/owner/organizations", requireAuth(API_RESOURCE), requireOwner, async (
   }
 });
 
-app.get("/owner/organizations/:organizationId/operational-state", requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
+secureRoute.get("/owner/organizations/:organizationId/operational-state", "ownerRead", requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
   try {
     const logtoOrganization = await getLogtoOrganizationById(req.params.organizationId);
     const profile = deriveOperationalProfile(logtoOrganization);
@@ -205,7 +206,7 @@ app.get("/owner/organizations/:organizationId/operational-state", requireAuth(AP
   }
 });
 
-app.get("/owner/system/worker-queues", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
+secureRoute.get("/owner/system/worker-queues", "ownerRead", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
   try {
     const organizations = await listLogtoOrganizations().catch(() => []);
     const profiles = organizations.map(deriveOperationalProfile);
@@ -218,7 +219,7 @@ app.get("/owner/system/worker-queues", requireAuth(API_RESOURCE), requireOwner, 
 });
 
 
-app.get("/owner/system/registry", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
+secureRoute.get("/owner/system/registry", "ownerRead", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
   try {
     return res.json({ registry: await listRegistry() });
   } catch (error) {
@@ -226,7 +227,7 @@ app.get("/owner/system/registry", requireAuth(API_RESOURCE), requireOwner, async
   }
 });
 
-app.post("/owner/system/operations", requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
+secureRoute.post("/owner/system/operations", "operationalTrigger", requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
   try {
     const operation = await createOperation(req.body || {});
     return res.status(202).json({ operation });
@@ -235,7 +236,7 @@ app.post("/owner/system/operations", requireAuth(API_RESOURCE), requireOwner, as
   }
 });
 
-app.post(["/owner/organizations", "/organizations"], requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
+secureRoute.post(["/owner/organizations", "/organizations"], "ownerSensitiveWrite", requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
   try {
     const normalized = normalizeProvisioningInput(req.body || {});
     if (normalized.errors.length > 0) {
@@ -257,20 +258,22 @@ app.post(["/owner/organizations", "/organizations"], requireAuth(API_RESOURCE), 
   }
 });
 
-app.get("/documents", requireOrganizationAccess({ requiredScopes: ["read:documents"] }), async (_req, res) => {
+secureRoute.get("/documents", "organizationMemberRead", requireOrganizationAccess({ requiredScopes: ["read:documents"] }), async (_req, res) => {
   res.json([
     { id: "1", title: "Getting Started Guide", updatedAt: "2024-03-15", updatedBy: "John Doe", preview: "Welcome to Civitas clean foundation..." },
     { id: "2", title: "Operational Contract Notes", updatedAt: "2024-03-14", updatedBy: "Alice Smith", preview: "The owner backbone now prefers operational-state over legacy logs..." },
   ]);
 });
 
-app.post("/documents", requireOrganizationAccess({ requiredScopes: ["create:documents"] }), async (_req, res) => {
+secureRoute.post("/documents", "organizationAdminWrite", requireOrganizationAccess({ requiredScopes: ["create:documents"] }), async (_req, res) => {
   res.json({ data: "Document created" });
 });
 
-app.get("/", (_req, res) => {
+secureRoute.get("/", "public", (_req, res) => {
   res.json({ message: "Welcome to the Civitas 10 API" });
 });
+
+secureRoute.assertAllRegisteredRoutesHavePolicies();
 
 if (require.main === module) {
   Promise.resolve()
@@ -280,4 +283,4 @@ if (require.main === module) {
     .catch((error) => { console.error(`Backend startup failed: ${error.message}`); process.exit(1); });
 }
 
-module.exports = { app, getWorkerHealthSnapshot, deriveOperationalProfile };
+module.exports = { app, secureRoute, getWorkerHealthSnapshot, deriveOperationalProfile };
