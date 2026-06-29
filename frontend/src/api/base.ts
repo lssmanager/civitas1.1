@@ -21,6 +21,9 @@ export class ApiRequestError extends Error {
 }
 
 const buildApiErrorMessage = async (response: Response) => {
+  if (response.status === 401) return "Access token rejected by API";
+  if (response.status === 403) return "Owner role required";
+
   const fallbackMessage = `API request failed: ${response.status} ${response.statusText}`.trim();
 
   try {
@@ -38,6 +41,8 @@ const buildApiErrorMessage = async (response: Response) => {
   return fallbackMessage;
 };
 
+const joinApiUrl = (endpoint: string) => `${API_BASE_URL.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
+
 export const useApi = () => {
   const { getAccessToken, getOrganizationToken } = useLogto();
 
@@ -54,11 +59,11 @@ export const useApi = () => {
 
         if (!token) {
           throw new ApiRequestError(
-            organizationId ? "User is not a member of the organization" : "Failed to get access token"
+            organizationId ? "User is not a member of the organization" : "Failed to get access token for API resource"
           );
         }
 
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await fetch(joinApiUrl(endpoint), {
           ...options,
           headers: {
             "Content-Type": "application/json",
@@ -82,5 +87,33 @@ export const useApi = () => {
     [getAccessToken, getOrganizationToken]
   );
 
-  return { fetchWithToken };
+  const ownerApiFetch = useMemo(
+    () => async (endpoint: string, options: RequestInit = {}) => {
+      try {
+        const token = await getAccessToken(API_RESOURCE_INDICATOR);
+        if (!token) throw new ApiRequestError("Failed to get access token for owner API resource");
+
+        const response = await fetch(joinApiUrl(endpoint), {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            ...options.headers,
+          },
+        });
+
+        if (!response.ok) {
+          throw new ApiRequestError(await buildApiErrorMessage(response), response.status);
+        }
+
+        return await response.json();
+      } catch (error) {
+        if (error instanceof ApiRequestError) throw error;
+        throw new ApiRequestError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [getAccessToken]
+  );
+
+  return { fetchWithToken, ownerApiFetch };
 };

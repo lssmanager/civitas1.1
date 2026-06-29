@@ -127,21 +127,21 @@ export type CreateOwnerOrganizationResponse = {
 };
 
 export const useOwnerApi = () => {
-  const { fetchWithToken } = useApi();
+  const { ownerApiFetch } = useApi();
 
   return useMemo(
     () => ({
-      getOwnerMe: async (): Promise<OwnerMeResponse> => fetchWithToken("/owner/me"),
-      getOrganizations: async (): Promise<{ organizations: OwnerOrganization[] }> => fetchWithToken("/owner/organizations"),
-      getOrganizationTemplate: async (): Promise<OrganizationTemplateResponse> => fetchWithToken("/owner/organization-template"),
-      getOrganizationOperationalState: async (organizationId: string): Promise<ConsolidatedOperationalResponse> => fetchWithToken(`/owner/organizations/${encodeURIComponent(organizationId)}/operational-state`),
-      getWorkerQueuesObservability: async (): Promise<WorkerHealthAggregate> => fetchWithToken("/owner/system/worker-queues"),
+      getOwnerMe: async (): Promise<OwnerMeResponse> => ownerApiFetch("/owner/me"),
+      getOrganizations: async (): Promise<{ organizations: OwnerOrganization[] }> => ownerApiFetch("/owner/organizations"),
+      getOrganizationTemplate: async (): Promise<OrganizationTemplateResponse> => ownerApiFetch("/owner/organization-template"),
+      getOrganizationOperationalState: async (organizationId: string): Promise<ConsolidatedOperationalResponse> => ownerApiFetch(`/owner/organizations/${encodeURIComponent(organizationId)}/operational-state`),
+      getWorkerQueuesObservability: async (): Promise<WorkerHealthAggregate> => ownerApiFetch("/owner/system/worker-queues"),
       createOrganization: async (data: CreateOwnerOrganizationInput): Promise<CreateOwnerOrganizationResponse> =>
-        fetchWithToken("/owner/organizations", {
+        ownerApiFetch("/owner/organizations", {
           method: "POST",
           body: JSON.stringify(data),
         }),
     }),
-    [fetchWithToken],
+    [ownerApiFetch],
   );
 };
