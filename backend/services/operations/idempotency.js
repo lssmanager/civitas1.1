@@ -1,0 +1,4 @@
+const { eq } = require("drizzle-orm");
+async function getIdempotencyRecord({ db, schema, idempotencyKey }) { if (!idempotencyKey || !db || !schema?.idempotencyRecords) return null; const rows = await db.select().from(schema.idempotencyRecords).where(eq(schema.idempotencyRecords.idempotencyKey, idempotencyKey)).limit(1); return rows[0] || null; }
+async function saveIdempotencyRecord({ db, schema, idempotencyKey, operationId, actionType, resultJson }) { if (!idempotencyKey || !db || !schema?.idempotencyRecords) return null; const [row] = await db.insert(schema.idempotencyRecords).values({ idempotencyKey, operationId, actionType, resultJson, status: "completed", updatedAt: new Date() }).onConflictDoUpdate({ target: schema.idempotencyRecords.idempotencyKey, set: { resultJson, status: "completed", updatedAt: new Date() } }).returning(); return row; }
+module.exports = { getIdempotencyRecord, saveIdempotencyRecord };

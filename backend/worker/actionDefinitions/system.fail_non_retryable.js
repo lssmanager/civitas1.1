@@ -1,0 +1,1 @@
+module.exports = { type: "system.fail_non_retryable", queue: "priority_commands", maxAttempts: 1, inputSchema() { return true; }, idempotencyKey() { return null; }, async execute() { const error = new Error("Intentional non-retryable failure"); error.retryable = false; error.unrecoverable = true; throw error; } };

@@ -1,0 +1,4 @@
+function requireEnv(name) { if (!process.env[name]) { const error = new Error(`${name} is required`); error.code = `${name}_MISSING`; throw error; } return process.env[name]; }
+function validateRuntimeEnv({ requireRedis = true } = {}) { requireEnv("DATABASE_URL"); if (requireRedis) requireEnv("REDIS_URL"); return true; }
+async function waitForDatabase({ ping, timeoutMs = Number(process.env.DATABASE_WAIT_TIMEOUT_MS || 30000), intervalMs = Number(process.env.DATABASE_WAIT_INTERVAL_MS || 1000) } = {}) { const started = Date.now(); let lastError; while (Date.now() - started <= timeoutMs) { try { await ping(); return { ok: true, waitedMs: Date.now() - started }; } catch (error) { lastError = error; await new Promise((resolve) => setTimeout(resolve, intervalMs)); } } throw new Error(`Database was not ready after ${timeoutMs}ms: ${lastError?.message || "unknown error"}`); }
+module.exports = { requireEnv, validateRuntimeEnv, waitForDatabase };

@@ -1,0 +1,1 @@
+module.exports = { type: "system.fail_retryable", queue: "background_events", maxAttempts: 3, inputSchema() { return true; }, idempotencyKey() { return null; }, async execute() { const error = new Error("Intentional retryable failure"); error.retryable = true; throw error; } };

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import Topbar from "../components/Topbar";
 import { useOwnerApi, type CreateOwnerOrganizationInput } from "../api/owner";
 
@@ -524,22 +523,12 @@ const OwnerOrganizationsPage = () => {
         <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-blue-700">
-              Owner global workspace
+              Provisioning workspace
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-slate-900">Create organization</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              This clean rescue page preserves the full provisioning flow: organization creation in Logto,
-              administrative users, organization roles, JIT defaults, entry URLs, and custom data for the new
-              Civitas foundation.
+              Workspace enfocado en provisioning: template status, organización canónica, custom data, usuarios administrativos, segmentación y submit. La navegación primaria permanece en la barra superior.
             </p>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              to="/"
-              className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-            >
-              Back to home
-            </Link>
           </div>
         </div>
 
@@ -904,9 +893,6 @@ const OwnerOrganizationsPage = () => {
               </div>
             )}
             <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
-              <Link to="/" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
-                Cancel
-              </Link>
               <button type="submit" disabled={!canSubmit} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
                 {submitting ? "Creating organization..." : "Create organization"}
               </button>

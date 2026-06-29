@@ -8,7 +8,11 @@
     "dev": "node --watch index.js",
     "test": "node --test",
     "worker": "node worker/index.js",
-    "start:worker": "node worker/index.js"
+    "start:worker": "node worker/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +21,13 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "jose": "^5.9.6"
+    "jose": "^5.9.6",
+    "bullmq": "^5.58.9",
+    "drizzle-orm": "^0.44.5",
+    "ioredis": "^5.7.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.4"
   }
 }

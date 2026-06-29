@@ -119,10 +119,15 @@ async function loadOneQueueTelemetry({ redis, queue, now }) {
 }
 
 async function loadRuntimeQueueTelemetry({ redis = redisCommand, config = getRuntimeQueueConfig(), now = new Date() } = {}) {
-  const queues = Array.isArray(config.queues) && config.queues.length > 0
-    ? config.queues
-    : [{ name: config.queueName, redisBase: config.queueRedisBase }];
-  return Promise.all(queues.map((queue) => loadOneQueueTelemetry({ redis, queue, now })));
+  try {
+    const { getBullQueueTelemetry } = require("./bullmq");
+    return await getBullQueueTelemetry(config);
+  } catch (_error) {
+    const queues = Array.isArray(config.queues) && config.queues.length > 0
+      ? config.queues
+      : [{ name: config.queueName, redisBase: config.queueRedisBase }];
+    return Promise.all(queues.map((queue) => loadOneQueueTelemetry({ redis, queue, now })));
+  }
 }
 
 module.exports = {

@@ -12,9 +12,9 @@ test("OwnerWorkerQueuesPage loads worker and queue observability from the owner 
 test("OwnerWorkerQueuesPage renders queue and blocked organization summaries", () => {
   assert.match(source, /data\?\.queues\.map/);
   assert.match(source, /data\?\.blockedOrganizations\.length/);
-  assert.match(source, /Worker and queues/);
+  assert.match(source, /Operational runtime console/);
 });
 
 test("OwnerWorkerQueuesPage stays framed as the clean civitas10 runtime view", () => {
-  assert.match(source, /runtime operativo limpio en `civitas10`/i);
+  assert.match(source, /worker heartbeat, Redis signal, colas, backlog, failed jobs/i);
 });

@@ -276,7 +276,7 @@ function buildConsolidatedOperationalResponse({ organization, logtoOrganization,
 
   const response = buildContractResponse({ organization, canonical, fluentcrm, wordpress, worker, liveVerification, contactProgress, latestEventIds: { audit: events[0]?.id || null, providerVerification: providerVerificationEvent?.id || null, fluentcrmCompany: fluentcrmCompanyEvent?.id || null, fluentcrmContacts: fluentcrmContactsEvent?.id || null }, generatedAt, compatibility });
   const localPolling = buildPollingPolicy({ worker, pending });
-  const mergedPolling = response.polling?.shouldPoll ? response.polling : localPolling.shouldPoll ? localPolling : response.polling;
+  const mergedPolling = localPolling.shouldPoll ? localPolling : response.polling;
   return { ...response, summary: buildOperationalSummary({ canonical, fluentcrm, wordpress, worker, liveVerification, contactProgress }), polling: mergedPolling };
 }
 

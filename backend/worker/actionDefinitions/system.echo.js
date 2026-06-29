@@ -1,0 +1,1 @@
+module.exports = { type: "system.echo", queue: "priority_commands", maxAttempts: 1, inputSchema(input) { return input && typeof input === "object"; }, idempotencyKey(input) { return input.idempotencyKey || null; }, async execute(input) { return { echo: input, executedAt: new Date().toISOString() }; } };

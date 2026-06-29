@@ -19,6 +19,10 @@ const { buildConsolidatedOperationalResponse } = require("./services/operational
 const { getWorkerHealthSnapshot, loadWorkerHealthSnapshot, loadWorkerQueuesObservability } = require("./services/operationalObservability");
 const { getDatabaseHealth } = require("./lib/databaseHealth");
 const { getRedisHealth } = require("./lib/redisHealth");
+const { validateRuntimeEnv, waitForDatabase } = require("./runtime/env");
+const { pingDatabase } = require("./lib/db");
+const { createOperation, listOperationalState } = require("./services/operationalOperations");
+const { listRegistry } = require("./services/registryStore");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -184,12 +188,13 @@ app.get("/owner/organizations/:organizationId/operational-state", requireAuth(AP
     const logtoOrganization = await getLogtoOrganizationById(req.params.organizationId);
     const profile = deriveOperationalProfile(logtoOrganization);
     const workerHealth = await loadWorkerHealthSnapshot();
+    const operationalState = await listOperationalState({ limit: 100 });
     const response = buildConsolidatedOperationalResponse({
       organization: buildOperationalOrganization(logtoOrganization, profile),
       logtoOrganization,
       profile,
-      pending: [],
-      events: [],
+      pending: operationalState.operations.filter((operation) => operation.logtoOrganizationId === req.params.organizationId),
+      events: operationalState.auditLogRows.filter((row) => row.logtoOrganizationId === req.params.organizationId),
       workerHealth,
       generatedAt: new Date(),
       compatibility: { repository: "civitas10", mode: "clean_foundation_no_legacy_sync_tables" },
@@ -204,10 +209,29 @@ app.get("/owner/system/worker-queues", requireAuth(API_RESOURCE), requireOwner, 
   try {
     const organizations = await listLogtoOrganizations().catch(() => []);
     const profiles = organizations.map(deriveOperationalProfile);
-    const aggregate = await loadWorkerQueuesObservability({ profiles, operations: [], steps: [], auditLogRows: [] });
+    const operationalState = await listOperationalState({ limit: 200 });
+    const aggregate = await loadWorkerQueuesObservability({ profiles, operations: operationalState.operations, steps: operationalState.steps, auditLogRows: operationalState.auditLogRows });
     return res.json(aggregate);
   } catch (error) {
     return res.status(error?.status || 500).json({ error: error?.name || "OwnerWorkerQueuesError", message: error?.message || "Failed to load worker and queues observability", code: error?.code || null, details: error?.body || null });
+  }
+});
+
+
+app.get("/owner/system/registry", requireAuth(API_RESOURCE), requireOwner, async (_req, res) => {
+  try {
+    return res.json({ registry: await listRegistry() });
+  } catch (error) {
+    return res.status(error?.status || 500).json({ error: error?.name || "OwnerRegistryError", message: error?.message || "Failed to load operational registry" });
+  }
+});
+
+app.post("/owner/system/operations", requireAuth(API_RESOURCE), requireOwner, async (req, res) => {
+  try {
+    const operation = await createOperation(req.body || {});
+    return res.status(202).json({ operation });
+  } catch (error) {
+    return res.status(error?.status || 500).json({ error: error?.name || "OperationalOperationCreateError", message: error?.message || "Failed to enqueue operational operation" });
   }
 });
 
@@ -249,9 +273,11 @@ app.get("/", (_req, res) => {
 });
 
 if (require.main === module) {
-  app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-  });
+  Promise.resolve()
+    .then(() => validateRuntimeEnv({ requireRedis: true }))
+    .then(() => waitForDatabase({ ping: pingDatabase }))
+    .then(() => app.listen(port, () => { console.log(`Server is running on port ${port}`); }))
+    .catch((error) => { console.error(`Backend startup failed: ${error.message}`); process.exit(1); });
 }
 
 module.exports = { app, getWorkerHealthSnapshot, deriveOperationalProfile };
