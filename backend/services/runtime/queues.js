@@ -92,22 +92,22 @@ async function readQueueOldestJobAt(redis, queueRedisBase) {
   return toIso(oldestTimestampMs);
 }
 
-async function loadRuntimeQueueTelemetry({ redis = redisCommand, config = getRuntimeQueueConfig(), now = new Date() } = {}) {
+async function loadOneQueueTelemetry({ redis, queue, now }) {
   const [waiting, active, delayed, failed, oldestJobAt] = await Promise.all([
-    readQueueMetric(redis, "LLEN", `${config.queueRedisBase}:wait`),
-    readQueueMetric(redis, "LLEN", `${config.queueRedisBase}:active`),
-    readQueueMetric(redis, "ZCARD", `${config.queueRedisBase}:delayed`),
-    readQueueMetric(redis, "ZCARD", `${config.queueRedisBase}:failed`),
-    readQueueOldestJobAt(redis, config.queueRedisBase),
+    readQueueMetric(redis, "LLEN", `${queue.redisBase}:wait`),
+    readQueueMetric(redis, "LLEN", `${queue.redisBase}:active`),
+    readQueueMetric(redis, "ZCARD", `${queue.redisBase}:delayed`),
+    readQueueMetric(redis, "ZCARD", `${queue.redisBase}:failed`),
+    readQueueOldestJobAt(redis, queue.redisBase),
   ]);
 
   const oldestJobAgeSeconds = oldestJobAt
     ? Math.max(0, Math.floor((new Date(now).getTime() - new Date(oldestJobAt).getTime()) / 1000))
     : 0;
 
-  return [{
-    name: config.queueName,
-    redisBase: config.queueRedisBase,
+  return {
+    name: queue.name,
+    redisBase: queue.redisBase,
     waiting,
     active,
     delayed,
@@ -115,7 +115,14 @@ async function loadRuntimeQueueTelemetry({ redis = redisCommand, config = getRun
     oldestJobAt,
     oldestJobAgeSeconds,
     source: "redis_runtime",
-  }];
+  };
+}
+
+async function loadRuntimeQueueTelemetry({ redis = redisCommand, config = getRuntimeQueueConfig(), now = new Date() } = {}) {
+  const queues = Array.isArray(config.queues) && config.queues.length > 0
+    ? config.queues
+    : [{ name: config.queueName, redisBase: config.queueRedisBase }];
+  return Promise.all(queues.map((queue) => loadOneQueueTelemetry({ redis, queue, now })));
 }
 
 module.exports = {
