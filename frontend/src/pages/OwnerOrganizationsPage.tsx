@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import Topbar from "../components/Topbar";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ErrorState, OwnerShell, PageHeader, SectionCard, StatusBanner, fieldClassName, labelClassName, primaryButtonClassName, secondaryButtonClassName } from "../components/owner/OwnerUI";
 import { useOwnerApi, type CreateOwnerOrganizationInput } from "../api/owner";
 
 const APP_BASE_DOMAINS = ["didaxus.com", "socialstudies.cloud", "learnsocialstudies.com"] as const;
@@ -207,10 +207,7 @@ const parseDelimitedValues = (value: string) =>
     ),
   );
 
-const inputClassName =
-  "mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
-const labelClassName = "block text-sm font-medium text-slate-700";
-const sectionClassName = "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm";
+const inputClassName = fieldClassName;
 
 const OwnerOrganizationsPage = () => {
   const ownerApi = useOwnerApi();
@@ -488,7 +485,7 @@ const OwnerOrganizationsPage = () => {
     };
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitError(null);
     const errors = validate();
@@ -517,29 +514,17 @@ const OwnerOrganizationsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Topbar />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-blue-700">
-              Provisioning workspace
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Create organization</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Workspace enfocado en provisioning: template status, organización canónica, custom data, usuarios administrativos, segmentación y submit. La navegación primaria permanece en la barra superior.
-            </p>
-          </div>
-        </div>
+    <OwnerShell>
+        <PageHeader
+          eyebrow="Provisioning workspace"
+          title="Create organization"
+          description="Workspace enfocado en provisioning: template status, organización canónica, custom data, usuarios administrativos, segmentación y submit. La navegación primaria permanece en el shell owner."
+        />
 
-        {templateError && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-            Could not load the organization template from the API. {templateError}
-          </div>
-        )}
+        {templateError && <ErrorState message={<>Could not load the organization template from the API. {templateError}</>} />}
 
         {created && (
-          <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+          <StatusBanner tone="success">
             <h2 className="text-lg font-semibold text-emerald-900">Organization created in Logto</h2>
             <p className="mt-2 text-sm text-emerald-800">
               <strong>{created.organizationName}</strong> was created successfully and the administrative users were
@@ -568,11 +553,11 @@ const OwnerOrganizationsPage = () => {
                 </ul>
               </div>
             </div>
-          </div>
+          </StatusBanner>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          <section className={sectionClassName}>
+          <SectionCard>
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Canonical organization</h2>
               <p className="text-sm text-slate-600">
@@ -641,9 +626,9 @@ const OwnerOrganizationsPage = () => {
                   : "Pending subdomain and domain"}
               </strong>
             </div>
-          </section>
+          </SectionCard>
 
-          <section className={sectionClassName}>
+          <SectionCard>
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Business profile and custom data</h2>
               <p className="text-sm text-slate-600">
@@ -729,9 +714,9 @@ const OwnerOrganizationsPage = () => {
                 <textarea className={inputClassName} rows={4} value={form.business.about} onChange={(event) => updateBusinessField("about", event.target.value)} />
               </div>
             </div>
-          </section>
+          </SectionCard>
 
-          <section className={sectionClassName}>
+          <SectionCard>
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Administrative users</h2>
               <p className="text-sm text-slate-600">
@@ -757,7 +742,7 @@ const OwnerOrganizationsPage = () => {
                       <button
                         type="button"
                         onClick={() => removeContact(contact.id)}
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                        className={secondaryButtonClassName}
                       >
                         Remove
                       </button>
@@ -817,14 +802,14 @@ const OwnerOrganizationsPage = () => {
               <button
                 type="button"
                 onClick={addContact}
-                className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                className={secondaryButtonClassName}
               >
                 Add another administrative user
               </button>
             </div>
-          </section>
+          </SectionCard>
 
-          <section className={sectionClassName}>
+          <SectionCard>
             <div className="mb-6 flex flex-col gap-2">
               <h2 className="text-xl font-semibold text-slate-900">Segmentation metadata</h2>
               <p className="text-sm text-slate-600">
@@ -868,9 +853,9 @@ const OwnerOrganizationsPage = () => {
                 />
               </div>
             </div>
-          </section>
+          </SectionCard>
 
-          <section className={sectionClassName}>
+          <SectionCard>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Submit provisioning</h2>
@@ -888,19 +873,16 @@ const OwnerOrganizationsPage = () => {
               </div>
             </div>
             {submitError && (
-              <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {submitError}
-              </div>
+              <div className="mt-5"><ErrorState message={submitError} /></div>
             )}
             <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
-              <button type="submit" disabled={!canSubmit} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+              <button type="submit" disabled={!canSubmit} className={primaryButtonClassName}>
                 {submitting ? "Creating organization..." : "Create organization"}
               </button>
             </div>
-          </section>
+          </SectionCard>
         </form>
-      </main>
-    </div>
+    </OwnerShell>
   );
 };
 
