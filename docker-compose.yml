@@ -66,6 +66,47 @@ services:
       - traefik.http.routers.civitas-frontend.priority=1
       - traefik.http.services.civitas-frontend.loadbalancer.server.port=4173
 
+  postgres:
+    image: postgres:16-alpine
+    profiles:
+      - local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-civitas}
+      POSTGRES_USER: ${POSTGRES_USER:-civitas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-civitas}
+    ports:
+      - "5432:5432"
+    volumes:
+      - civitas_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-civitas} -d $${POSTGRES_DB:-civitas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      - default
+
+  redis:
+    image: redis:7-alpine
+    profiles:
+      - local
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - civitas_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      - default
+
+volumes:
+  civitas_postgres_data:
+  civitas_redis_data:
+
 networks:
   default:
   loginet:
