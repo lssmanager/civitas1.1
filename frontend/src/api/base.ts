@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { APP_ENV } from "../env";
 
 const API_BASE_URL = APP_ENV.api.baseUrl;
-const DOCUMIND_API_RESOURCE_INDICATOR = APP_ENV.api.resourceIndicator;
+const API_RESOURCE_INDICATOR = APP_ENV.api.resourceIndicator;
 
 export type ApiError = {
   message: string;
@@ -15,60 +15,72 @@ export class ApiRequestError extends Error {
 
   constructor(message: string, status?: number) {
     super(message);
-    this.name = 'ApiRequestError';
+    this.name = "ApiRequestError";
     this.status = status;
   }
 }
 
+const buildApiErrorMessage = async (response: Response) => {
+  const fallbackMessage = `API request failed: ${response.status} ${response.statusText}`.trim();
+
+  try {
+    const data = await response.json();
+    if (typeof data?.message === "string" && data.message.length > 0) {
+      return data.message;
+    }
+    if (typeof data?.error === "string" && data.error.length > 0) {
+      return data.error;
+    }
+  } catch {
+    // Ignore non-JSON error bodies and use the HTTP fallback message.
+  }
+
+  return fallbackMessage;
+};
+
 export const useApi = () => {
   const { getAccessToken, getOrganizationToken } = useLogto();
 
-  const fetchWithToken = useMemo(() => async (
-    endpoint: string,
-    options: RequestInit = {},
-    organizationId?: string
-  ) => {
-    try {
-      let token: string | undefined;
-      
-      if (organizationId) {
-        token = await getOrganizationToken(organizationId);
-      } else {
-        token = await getAccessToken(DOCUMIND_API_RESOURCE_INDICATOR);
-      }
+  const fetchWithToken = useMemo(
+    () => async (endpoint: string, options: RequestInit = {}, organizationId?: string) => {
+      try {
+        let token: string | undefined;
 
-      if (!token) {
-        throw new ApiRequestError(
-          organizationId
-            ? "User is not a member of the organization"
-            : "Failed to get access token"
-        );
-      }
+        if (organizationId) {
+          token = await getOrganizationToken(organizationId);
+        } else {
+          token = await getAccessToken(API_RESOURCE_INDICATOR);
+        }
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          ...options.headers,
-        },
-      });
+        if (!token) {
+          throw new ApiRequestError(
+            organizationId ? "User is not a member of the organization" : "Failed to get access token"
+          );
+        }
 
-      if (!response.ok) {
-        throw new ApiRequestError(
-          `API request failed: ${response.statusText}`,
-          response.status
-        );
-      }
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            ...options.headers,
+          },
+        });
 
-      return await response.json();
-    } catch (error) {
-      if (error instanceof ApiRequestError) {
-        throw error;
+        if (!response.ok) {
+          throw new ApiRequestError(await buildApiErrorMessage(response), response.status);
+        }
+
+        return await response.json();
+      } catch (error) {
+        if (error instanceof ApiRequestError) {
+          throw error;
+        }
+        throw new ApiRequestError(error instanceof Error ? error.message : String(error));
       }
-      throw new ApiRequestError(error instanceof Error ? error.message : String(error));
-    }
-  }, [getAccessToken, getOrganizationToken]);
+    },
+    [getAccessToken, getOrganizationToken]
+  );
 
   return { fetchWithToken };
-}; 
+};
